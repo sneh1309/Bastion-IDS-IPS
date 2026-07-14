@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bastion — Network Threat Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0A0D13; --bg-2:#0E121B; --panel:#131824; --panel-2:#182031;
+    --line:#212a3d; --line-soft:#1a2233;
+    --text:#E6EBF2; --muted:#8A97AC; --muted-2:#5b6779;
+    --mint:#14E0A0; --mint-dim:#0a6b4d;
+    --blue:#4C8DFF;
+    --crit:#F0453A; --high:#FF8A3D; --med:#FFC24B; --low:#35C2E0;
+    --r:12px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:"IBM Plex Sans",system-ui,sans-serif;
+    font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+  .mono{font-family:"IBM Plex Mono",monospace}
+  ::-webkit-scrollbar{width:9px;height:9px}
+  ::-webkit-scrollbar-thumb{background:var(--line);border-radius:6px}
+
+  .app{display:grid;grid-template-columns:216px 1fr;min-height:100vh}
+
+  /* Sidebar */
+  aside{background:var(--bg-2);border-right:1px solid var(--line-soft);padding:18px 14px;
+    display:flex;flex-direction:column;gap:6px;position:sticky;top:0;height:100vh}
+  .logo{display:flex;align-items:center;gap:10px;padding:4px 8px 20px}
+  .logo .mark{width:32px;height:32px;flex:0 0 32px}
+  .logo .name{font-weight:700;font-size:16.5px;letter-spacing:-.01em}
+  .logo .name span{color:var(--mint)}
+  .navbtn{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:9px;
+    color:var(--muted);font-weight:500;cursor:pointer;border:none;background:none;
+    font-family:inherit;font-size:14px;width:100%;text-align:left;transition:.15s}
+  .navbtn:hover{color:var(--text);background:var(--panel)}
+  .navbtn.active{color:var(--text);background:var(--panel-2);box-shadow:inset 2px 0 0 var(--mint)}
+  .navbtn svg{width:18px;height:18px;flex:0 0 18px;opacity:.9}
+  .navbtn .badge{margin-left:auto;font-family:"IBM Plex Mono";font-size:11px;font-weight:600;
+    background:var(--panel-2);padding:1px 7px;border-radius:20px;color:var(--muted)}
+  .navbtn.active .badge{background:var(--mint-dim);color:var(--mint)}
+  .side-foot{margin-top:auto;font-size:11px;color:var(--muted-2);padding:8px;line-height:1.6}
+
+  /* Main */
+  main{min-width:0;display:flex;flex-direction:column}
+  .topbar{display:flex;align-items:center;gap:16px;padding:15px 24px;
+    border-bottom:1px solid var(--line-soft);background:var(--bg-2);position:sticky;top:0;z-index:20}
+  .topbar h1{font-size:16px;font-weight:600}
+  .topbar .sub{color:var(--muted-2);font-size:12px}
+  .top-right{margin-left:auto;display:flex;align-items:center;gap:12px}
+  .demo-pill{font-size:10.5px;font-weight:600;letter-spacing:.05em;color:var(--med);
+    border:1px solid rgba(255,194,75,.35);padding:3px 9px;border-radius:20px}
+  .status-pill{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;
+    padding:6px 12px;border-radius:20px;background:rgba(20,224,160,.12);color:var(--mint)}
+  .status-pill .live{width:8px;height:8px;border-radius:50%;background:var(--mint);
+    box-shadow:0 0 0 0 rgba(20,224,160,.6);animation:pulse 2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(20,224,160,.5)}70%{box-shadow:0 0 0 7px rgba(20,224,160,0)}100%{box-shadow:0 0 0 0 rgba(20,224,160,0)}}
+  .mode-toggle{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:9px;
+    overflow:hidden;font-size:12.5px;font-weight:600}
+  .mode-toggle button{border:none;background:none;color:var(--muted);padding:7px 14px;
+    cursor:pointer;font-family:inherit;font-weight:600;transition:.15s}
+  .mode-toggle button.on{background:var(--mint);color:#052b1e}
+  .mode-toggle button.on.ips{background:var(--crit);color:#fff}
+
+  .view{padding:22px 24px 60px;display:none}
+  .view.active{display:block;animation:fade .3s}
+  @keyframes fade{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+
+  /* KPI */
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+  .kpi{background:var(--panel);border:1px solid var(--line-soft);border-radius:var(--r);padding:16px 18px}
+  .kpi .k{font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted-2)}
+  .kpi .v{font-family:"IBM Plex Mono";font-size:28px;font-weight:600;margin-top:6px;line-height:1}
+  .kpi .d{font-size:11.5px;color:var(--muted);margin-top:6px}
+  .kpi.alert .v{color:var(--high)} .kpi.block .v{color:var(--crit)} .kpi.ok .v{color:var(--mint)}
+
+  .grid-2{display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start}
+  .card{background:var(--panel);border:1px solid var(--line-soft);border-radius:var(--r);overflow:hidden}
+  .card-head{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--line-soft)}
+  .card-head h2{font-size:14px;font-weight:600}
+  .card-head .tools{margin-left:auto;display:flex;gap:8px}
+  .mini-btn{font-size:12px;font-family:inherit;font-weight:500;color:var(--muted);
+    background:var(--panel-2);border:1px solid var(--line);border-radius:7px;padding:5px 11px;
+    cursor:pointer;transition:.15s;display:flex;align-items:center;gap:6px}
+  .mini-btn:hover{color:var(--text);border-color:var(--muted-2)}
+  .mini-btn.on{color:var(--mint);border-color:var(--mint-dim)}
+
+  /* Alert feed */
+  .feed{max-height:560px;overflow-y:auto}
+  .alert-row{display:grid;grid-template-columns:60px 1fr auto;gap:12px;padding:12px 18px;
+    border-bottom:1px solid var(--line-soft);align-items:center;animation:slidein .35s ease}
+  @keyframes slidein{from{opacity:0;background:rgba(20,224,160,.06)}to{opacity:1;background:transparent}}
+  .sev{font-family:"IBM Plex Mono";font-size:10.5px;font-weight:600;text-align:center;
+    padding:3px 0;border-radius:5px;text-transform:uppercase}
+  .sev.s1{background:rgba(240,69,58,.16);color:var(--crit)}
+  .sev.s2{background:rgba(255,138,61,.16);color:var(--high)}
+  .sev.s3{background:rgba(255,194,75,.16);color:var(--med)}
+  .sev.s4{background:rgba(53,194,224,.16);color:var(--low)}
+  .alert-main .sig{font-weight:500;font-size:13.5px}
+  .alert-main .meta{font-family:"IBM Plex Mono";font-size:11.5px;color:var(--muted);margin-top:3px}
+  .alert-main .meta b{color:var(--text);font-weight:500}
+  .alert-main .cat{display:inline-block;font-size:10px;text-transform:uppercase;letter-spacing:.05em;
+    color:var(--muted-2);border:1px solid var(--line);border-radius:4px;padding:1px 6px;margin-top:5px}
+  .alert-act{display:flex;flex-direction:column;gap:5px;align-items:flex-end}
+  .alert-act .t{font-family:"IBM Plex Mono";font-size:11px;color:var(--muted-2)}
+  .row-btns{display:flex;gap:6px}
+  .rb{font-size:11px;font-family:inherit;font-weight:600;border:none;border-radius:6px;
+    padding:4px 9px;cursor:pointer;transition:.15s}
+  .rb.block{background:rgba(240,69,58,.14);color:var(--crit)}
+  .rb.block:hover{background:var(--crit);color:#fff}
+  .rb.ai{background:rgba(76,141,255,.14);color:var(--blue)}
+  .rb.ai:hover{background:var(--blue);color:#fff}
+  .rb.blocked{background:var(--panel-2);color:var(--muted-2);cursor:default}
+  .ai-panel{grid-column:1/-1;background:var(--bg);border:1px solid var(--line);border-radius:9px;
+    margin-top:4px;padding:14px 16px;font-size:13px}
+  .ai-panel h4{font-size:12px;color:var(--blue);margin-bottom:6px;display:flex;align-items:center;gap:7px}
+  .ai-panel p{margin-bottom:8px;color:#cfd8e6} .ai-panel ul{margin:0 0 6px 18px}
+  .ai-panel li{margin-bottom:4px;color:#cfd8e6} .ai-panel strong{color:var(--text)}
+  .thinking{display:flex;gap:6px;align-items:center;color:var(--blue)}
+  .thinking .d{width:6px;height:6px;border-radius:50%;background:var(--blue);animation:bnc 1s infinite}
+  .thinking .d:nth-child(2){animation-delay:.15s}.thinking .d:nth-child(3){animation-delay:.3s}
+  @keyframes bnc{0%,60%,100%{opacity:.3}30%{opacity:1}}
+
+  /* Side stats */
+  .side-card{padding:16px 18px}
+  .side-card h3{font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted-2);margin-bottom:14px}
+  .sevbar{display:flex;flex-direction:column;gap:10px}
+  .sevbar .row{display:flex;align-items:center;gap:10px;font-size:12.5px}
+  .sevbar .lbl{width:60px;color:var(--muted)}
+  .sevbar .track{flex:1;height:7px;background:var(--panel-2);border-radius:4px;overflow:hidden}
+  .sevbar .bar{height:100%;border-radius:4px;transition:width .5s}
+  .sevbar .n{font-family:"IBM Plex Mono";width:28px;text-align:right;font-size:12px}
+  .talkers{display:flex;flex-direction:column;gap:2px}
+  .talker{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line-soft);font-size:12.5px}
+  .talker:first-child{border-top:none}
+  .talker .ip{font-family:"IBM Plex Mono";flex:1}
+  .talker .cnt{font-family:"IBM Plex Mono";color:var(--high);font-weight:600}
+  .spark{display:flex;align-items:flex-end;gap:3px;height:70px;margin-top:4px}
+  .spark .b{flex:1;background:linear-gradient(var(--mint),var(--mint-dim));border-radius:2px 2px 0 0;
+    min-height:2px;transition:height .4s}
+
+  /* Tables (sensors / rules / blocked) */
+  table{width:100%;border-collapse:collapse}
+  th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted-2);
+    padding:12px 18px;border-bottom:1px solid var(--line-soft);font-weight:600}
+  td{padding:13px 18px;border-bottom:1px solid var(--line-soft);font-size:13.5px}
+  tr:last-child td{border-bottom:none}
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:7px}
+  .dot.on{background:var(--mint)} .dot.off{background:var(--muted-2)} .dot.warn{background:var(--med)}
+  .tag{font-size:11px;font-weight:600;padding:2px 9px;border-radius:20px}
+  .tag.ids{background:rgba(76,141,255,.15);color:var(--blue)}
+  .tag.ips{background:rgba(240,69,58,.15);color:var(--crit)}
+
+  .toggle{position:relative;width:40px;height:22px;flex:0 0 40px;cursor:pointer;display:inline-block}
+  .toggle input{opacity:0;width:0;height:0}
+  .tsl{position:absolute;inset:0;background:var(--panel-2);border:1px solid var(--line);border-radius:20px;transition:.2s}
+  .tsl::before{content:"";position:absolute;width:16px;height:16px;left:2px;top:2px;background:var(--muted);border-radius:50%;transition:.2s}
+  .toggle input:checked + .tsl{background:rgba(20,224,160,.25);border-color:var(--mint)}
+  .toggle input:checked + .tsl::before{transform:translateX(18px);background:var(--mint)}
+
+  .empty{padding:40px;text-align:center;color:var(--muted-2)}
+
+  /* toast */
+  #toasts{position:fixed;bottom:20px;right:20px;display:flex;flex-direction:column;gap:8px;z-index:100}
+  .toast{background:var(--panel-2);border:1px solid var(--line);border-left:3px solid var(--crit);
+    border-radius:9px;padding:11px 15px;font-size:13px;box-shadow:0 12px 30px rgba(0,0,0,.5);
+    animation:toastin .3s;max-width:320px}
+  .toast.ok{border-left-color:var(--mint)}
+  @keyframes toastin{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:none}}
+  .toast b{font-weight:600}
+
+  .note{font-size:12px;color:var(--muted-2);margin-top:14px;line-height:1.6}
+  .note.err{color:var(--med)}
+
+  @media(max-width:860px){
+    .app{grid-template-columns:1fr}
+    aside{position:fixed;left:-220px;transition:.2s;z-index:50}
+    aside.open{left:0}
+    .kpis{grid-template-columns:repeat(2,1fr)}
+    .grid-2{grid-template-columns:1fr}
+    .menu-btn{display:inline-flex!important}
+  }
+  .menu-btn{display:none;background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    padding:8px;cursor:pointer;color:var(--text)}
+  @media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- SIDEBAR -->
+  <aside id="sidebar">
+    <div class="logo">
+      <svg class="mark" viewBox="0 0 32 32" fill="none">
+        <path d="M16 2l12 4v8c0 7.5-5 12.5-12 15C9 26.5 4 21.5 4 14V6l12-4z"
+          fill="#131824" stroke="#14E0A0" stroke-width="1.8" stroke-linejoin="round"/>
+        <path d="M16 9v14M9 14h14" stroke="#14E0A0" stroke-width="1.6" stroke-linecap="round" opacity=".55"/>
+        <circle cx="16" cy="14" r="3.4" fill="#14E0A0"/>
+      </svg>
+      <div class="name">Bast<span>ion</span></div>
+    </div>
+    <button class="navbtn active" data-view="live">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M3 12h4l3 8 4-16 3 8h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Live Monitor <span class="badge" id="nbAlerts">0</span></button>
+    <button class="navbtn" data-view="sensors">
+      <svg viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="7" rx="2" stroke="currentColor" stroke-width="2"/><rect x="3" y="13" width="18" height="7" rx="2" stroke="currentColor" stroke-width="2"/><circle cx="7" cy="7.5" r="1" fill="currentColor"/><circle cx="7" cy="16.5" r="1" fill="currentColor"/></svg>
+      Sensors <span class="badge" id="nbSensors">3</span></button>
+    <button class="navbtn" data-view="rules">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="9" cy="6" r="2" fill="var(--panel)" stroke="currentColor" stroke-width="2"/><circle cx="15" cy="12" r="2" fill="var(--panel)" stroke="currentColor" stroke-width="2"/><circle cx="8" cy="18" r="2" fill="var(--panel)" stroke="currentColor" stroke-width="2"/></svg>
+      Rules</button>
+    <button class="navbtn" data-view="blocked">
+      <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M5.6 5.6l12.8 12.8" stroke="currentColor" stroke-width="2"/></svg>
+      Blocked IPs <span class="badge" id="nbBlocked">0</span></button>
+    <div class="side-foot">
+      Bastion Console v1.0<br>Engine: Suricata (compatible)<br>© Your Company
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main>
+    <div class="topbar">
+      <button class="menu-btn" id="menuBtn">☰</button>
+      <div>
+        <h1 id="viewTitle">Live Monitor</h1>
+        <div class="sub" id="viewSub">Real-time intrusion detection across your network</div>
+      </div>
+      <div class="top-right">
+        <span class="demo-pill">DEMO DATA</span>
+        <div class="mode-toggle" title="IDS detects only. IPS detects and blocks.">
+          <button id="modeIDS" class="on">IDS</button>
+          <button id="modeIPS">IPS</button>
+        </div>
+        <span class="status-pill"><span class="live"></span><span id="statusTxt">Protecting</span></span>
+      </div>
+    </div>
+
+    <!-- LIVE -->
+    <section class="view active" id="live">
+      <div class="kpis">
+        <div class="kpi alert"><div class="k">Alerts (session)</div><div class="v" id="kAlerts">0</div><div class="d">across all sensors</div></div>
+        <div class="kpi block"><div class="k">Threats blocked</div><div class="v" id="kBlocked">0</div><div class="d" id="kBlockedD">IPS mode required</div></div>
+        <div class="kpi ok"><div class="k">Sensors online</div><div class="v" id="kSensors">3<span style="font-size:16px;color:var(--muted-2)">/3</span></div><div class="d">monitoring live</div></div>
+        <div class="kpi"><div class="k">Top attacker</div><div class="v mono" id="kTop" style="font-size:16px;padding-top:6px">—</div><div class="d" id="kTopD">no activity yet</div></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-head">
+            <h2>Live alert feed</h2>
+            <div class="tools">
+              <button class="mini-btn on" id="pauseBtn">⏸ Pause</button>
+              <button class="mini-btn" id="clearBtn">Clear</button>
+            </div>
+          </div>
+          <div class="feed" id="feed"><div class="empty">Waiting for traffic…</div></div>
+        </div>
+
+        <div>
+          <div class="card" style="margin-bottom:16px">
+            <div class="side-card">
+              <h3>Alert activity (last 20 intervals)</h3>
+              <div class="spark" id="spark"></div>
+            </div>
+          </div>
+          <div class="card" style="margin-bottom:16px">
+            <div class="side-card">
+              <h3>Severity breakdown</h3>
+              <div class="sevbar" id="sevbar"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="side-card">
+              <h3>Top talkers</h3>
+              <div class="talkers" id="talkers"><div style="color:var(--muted-2);font-size:12.5px">No sources yet</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SENSORS -->
+    <section class="view" id="sensors">
+      <div class="card">
+        <div class="card-head"><h2>Deployed sensors</h2>
+          <div class="tools"><button class="mini-btn" id="addSensor">+ Add sensor</button></div></div>
+        <table><thead><tr><th>Sensor</th><th>Location</th><th>Mode</th><th>Traffic</th><th>Alerts</th><th>Status</th></tr></thead>
+          <tbody id="sensorRows"></tbody></table>
+      </div>
+      <p class="note">Each sensor is a machine running Suricata + the Bastion agent (a Raspberry Pi,
+        mini-PC, or VM at the network edge). Adding sensors for other people is how you turn this into
+        a multi-customer service. See the setup guide for wiring a real sensor to this console.</p>
+    </section>
+
+    <!-- RULES -->
+    <section class="view" id="rules">
+      <div class="card">
+        <div class="card-head"><h2>Detection rule categories</h2>
+          <div class="tools"><span class="mini-btn" style="cursor:default" id="ruleCount">0 active</span></div></div>
+        <table><thead><tr><th>Category</th><th>Description</th><th>Rules</th><th>Enabled</th></tr></thead>
+          <tbody id="ruleRows"></tbody></table>
+      </div>
+      <p class="note">These map to real Suricata/Emerging Threats rule categories. Toggling here would
+        enable or disable that ruleset on your sensors and reload the engine. Curating good rules
+        (fewer false positives) is a big part of what makes a paid product worth it.</p>
+    </section>
+
+    <!-- BLOCKED -->
+    <section class="view" id="blocked">
+      <div class="card">
+        <div class="card-head"><h2>Blocked source addresses</h2>
+          <div class="tools"><span class="mini-btn" style="cursor:default" id="blockCount">0 blocked</span></div></div>
+        <table><thead><tr><th>IP address</th><th>Reason</th><th>Blocked</th><th>Sensor</th><th></th></tr></thead>
+          <tbody id="blockRows"><tr><td colspan="5" class="empty">Nothing blocked yet.
+            Switch to IPS mode to auto-block high-severity threats, or block manually from the feed.</td></tr></tbody></table>
+      </div>
+      <p class="note">In IPS mode the agent pushes these as <span class="mono">nftables</span> drop rules
+        on the sensor, so blocked hosts can't reach the protected network. Unblocking removes the rule.</p>
+    </section>
+  </main>
+</div>
+<div id="toasts"></div>
+
+<script>
+/* ================= STATE ================= */
+const S = { mode:"IDS", paused:false, alerts:[], blocked:[], sessionAlerts:0, sessionBlocked:0,
+  spark:new Array(20).fill(0), sev:{1:0,2:0,3:0,4:0}, talkers:{}, aid:0 };
+
+const SIGS = [
+  {sig:"ET SCAN Nmap Scripting Engine Detected", cat:"Reconnaissance", sev:3},
+  {sig:"ET SCAN Potential SSH Scan (multiple connections)", cat:"Reconnaissance", sev:3},
+  {sig:"ET SCAN Suspicious inbound to MSSQL port 1433", cat:"Reconnaissance", sev:3},
+  {sig:"ETPRO MALWARE Win32/Agent CnC Checkin", cat:"Malware", sev:1},
+  {sig:"ET MALWARE Cobalt Strike Beacon Observed", cat:"Malware", sev:1},
+  {sig:"ET EXPLOIT Apache Log4j RCE Attempt (CVE-2021-44228)", cat:"Exploit", sev:1},
+  {sig:"ET WEB_SERVER SQL Injection Attempt in URI", cat:"Web Attack", sev:2},
+  {sig:"ET WEB_SPECIFIC_APPS WordPress wp-login Brute Force", cat:"Web Attack", sev:2},
+  {sig:"SSH Brute Force — repeated auth failures", cat:"Brute Force", sev:2},
+  {sig:"ET DOS Possible SYN Flood inbound", cat:"Denial of Service", sev:2},
+  {sig:"ET TROJAN Generic Downloader Activity", cat:"Malware", sev:1},
+  {sig:"ET POLICY Outbound connection to Tor exit node", cat:"Policy", sev:3},
+  {sig:"ET INFO Observed DNS-over-HTTPS request", cat:"Policy", sev:4},
+  {sig:"ET P2P BitTorrent Traffic Detected", cat:"Policy", sev:4},
+  {sig:"ET EXPLOIT Possible RDP BlueKeep Scan (CVE-2019-0708)", cat:"Exploit", sev:1},
+];
+const SEVNAME={1:"CRIT",2:"HIGH",3:"MED",4:"LOW"};
+const SENSOR_NAMES=["gw-home","branch-01","office-fw"];
+function randIP(pub=true){ return pub
+  ? `${r(11,223)}.${r(0,255)}.${r(0,255)}.${r(1,254)}`
+  : `192.168.${r(0,3)}.${r(2,240)}`; }
+function r(a,b){return Math.floor(Math.random()*(b-a+1))+a;}
+function now(){return new Date();}
+function hhmmss(d){return d.toTimeString().slice(0,8);}
+
+/* ================= SENSORS / RULES ================= */
+const SENSORS=[
+  {name:"gw-home", loc:"Home network (Timmins)", mode:"IDS", tput:"142 Mbps", alerts:0, status:"on"},
+  {name:"branch-01", loc:"Client site — retail", mode:"IPS", tput:"88 Mbps", alerts:0, status:"on"},
+  {name:"office-fw", loc:"Client site — clinic", mode:"IPS", tput:"310 Mbps", alerts:0, status:"on"},
+];
+const RULES=[
+  {cat:"Malware & C2", desc:"Command-and-control, trojans, beacons", n:14210, on:true},
+  {cat:"Exploits / CVEs", desc:"Known vulnerability exploitation", n:9840, on:true},
+  {cat:"Web attacks", desc:"SQLi, XSS, LFI, app brute force", n:6520, on:true},
+  {cat:"Scanning / recon", desc:"Port scans, probing, enumeration", n:2130, on:true},
+  {cat:"Brute force", desc:"SSH, RDP, login credential attacks", n:880, on:true},
+  {cat:"Denial of service", desc:"Floods and resource exhaustion", n:640, on:true},
+  {cat:"Policy / info", desc:"Tor, P2P, DoH — low severity notices", n:1450, on:false},
+];
+
+/* ================= RENDER: sensors, rules ================= */
+function renderSensors(){
+  document.getElementById("sensorRows").innerHTML = SENSORS.map(s=>`
+    <tr><td><b>${s.name}</b></td><td style="color:var(--muted)">${s.loc}</td>
+    <td><span class="tag ${s.mode.toLowerCase()}">${s.mode}</span></td>
+    <td class="mono">${s.tput}</td><td class="mono">${s.alerts}</td>
+    <td><span class="dot ${s.status}"></span>${s.status==="on"?"Online":"Offline"}</td></tr>`).join("");
+}
+function renderRules(){
+  document.getElementById("ruleRows").innerHTML = RULES.map((r,i)=>`
+    <tr><td><b>${r.cat}</b></td><td style="color:var(--muted)">${r.desc}</td>
+    <td class="mono">${r.n.toLocaleString()}</td>
+    <td><label class="toggle"><input type="checkbox" data-rule="${i}" ${r.on?"checked":""}><span class="tsl"></span></label></td></tr>`).join("");
+  const active=RULES.filter(r=>r.on).reduce((a,r)=>a+r.n,0);
+  document.getElementById("ruleCount").textContent=`${active.toLocaleString()} rules active`;
+  document.querySelectorAll("[data-rule]").forEach(cb=>cb.addEventListener("change",()=>{
+    RULES[cb.dataset.rule].on=cb.checked; renderRules();
+    toast(`${RULES[cb.dataset.rule].cat} ${cb.checked?"enabled":"disabled"} — reloading rules on sensors`, true);
+  }));
+}
+
+/* ================= FEED ENGINE ================= */
+function makeAlert(){
+  const t=SIGS[r(0,SIGS.length-1)];
+  const sensor=SENSORS[r(0,SENSORS.length-1)];
+  return { id:++S.aid, sig:t.sig, cat:t.cat, sev:t.sev, src:randIP(true), dst:randIP(false),
+    port:[22,80,443,445,1433,3389,53][r(0,6)], sensor:sensor.name, time:now(), blocked:false };
+}
+function pushAlert(a){
+  S.alerts.unshift(a); if(S.alerts.length>60) S.alerts.pop();
+  S.sessionAlerts++; S.sev[a.sev]++;
+  S.talkers[a.src]=(S.talkers[a.src]||0)+1;
+  const sn=SENSORS.find(s=>s.name===a.sensor); if(sn) sn.alerts++;
+  // IPS auto-block for high/critical
+  if(S.mode==="IPS" && a.sev<=2){ doBlock(a.src, a.sig, a.sensor, a); a.blocked=true; }
+  renderFeed(); renderStats(); renderKPIs();
+}
+function tick(){
+  S.spark.push(0); if(S.spark.length>20) S.spark.shift();
+  if(!S.paused){
+    const n=r(0,3);
+    for(let i=0;i<n;i++){ pushAlert(makeAlert()); S.spark[S.spark.length-1]++; }
+  }
+  renderSpark();
+}
+
+/* ================= RENDER: feed / stats / kpis ================= */
+function renderFeed(){
+  const f=document.getElementById("feed");
+  if(!S.alerts.length){ f.innerHTML=`<div class="empty">Waiting for traffic…</div>`; return; }
+  f.innerHTML = S.alerts.slice(0,40).map(a=>`
+    <div class="alert-row" data-id="${a.id}">
+      <div class="sev s${a.sev}">${SEVNAME[a.sev]}</div>
+      <div class="alert-main">
+        <div class="sig">${a.sig}</div>
+        <div class="meta"><b>${a.src}</b> → ${a.dst}:${a.port} · <span style="color:var(--muted-2)">${a.sensor}</span></div>
+        <span class="cat">${a.cat}</span>
+      </div>
+      <div class="alert-act">
+        <span class="t">${hhmmss(a.time)}</span>
+        <div class="row-btns">
+          <button class="rb ai" data-ai="${a.id}">Analyze</button>
+          ${a.blocked?'<span class="rb blocked">Blocked</span>':`<button class="rb block" data-block="${a.id}">Block</button>`}
+        </div>
+      </div>
+    </div>`).join("");
+  f.querySelectorAll("[data-block]").forEach(b=>b.addEventListener("click",()=>{
+    const a=S.alerts.find(x=>x.id==b.dataset.block); if(a){doBlock(a.src,a.sig,a.sensor,a);a.blocked=true;renderFeed();renderKPIs();}
+  }));
+  f.querySelectorAll("[data-ai]").forEach(b=>b.addEventListener("click",()=>analyzeAlert(b.dataset.ai)));
+}
+function renderSpark(){
+  const max=Math.max(1,...S.spark);
+  document.getElementById("spark").innerHTML=S.spark.map(v=>`<div class="b" style="height:${(v/max)*100}%"></div>`).join("");
+}
+function renderStats(){
+  const tot=S.sessionAlerts||1;
+  const cfg=[{k:1,c:"var(--crit)",n:"Critical"},{k:2,c:"var(--high)",n:"High"},{k:3,c:"var(--med)",n:"Medium"},{k:4,c:"var(--low)",n:"Low"}];
+  document.getElementById("sevbar").innerHTML=cfg.map(x=>`
+    <div class="row"><span class="lbl">${x.n}</span>
+      <span class="track"><span class="bar" style="width:${(S.sev[x.k]/tot)*100}%;background:${x.c}"></span></span>
+      <span class="n" style="color:${x.c}">${S.sev[x.k]}</span></div>`).join("");
+  const top=Object.entries(S.talkers).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  document.getElementById("talkers").innerHTML = top.length
+    ? top.map(([ip,c])=>`<div class="talker"><span class="ip">${ip}</span><span class="cnt">${c}</span></div>`).join("")
+    : `<div style="color:var(--muted-2);font-size:12.5px">No sources yet</div>`;
+}
+function renderKPIs(){
+  document.getElementById("kAlerts").textContent=S.sessionAlerts;
+  document.getElementById("kBlocked").textContent=S.sessionBlocked;
+  document.getElementById("kBlockedD").textContent = S.mode==="IPS"?"auto-blocking active":"IPS mode required";
+  document.getElementById("nbAlerts").textContent=S.sessionAlerts;
+  document.getElementById("nbBlocked").textContent=S.blocked.length;
+  const top=Object.entries(S.talkers).sort((a,b)=>b[1]-a[1])[0];
+  document.getElementById("kTop").textContent = top?top[0]:"—";
+  document.getElementById("kTopD").textContent = top?`${top[1]} alerts from this host`:"no activity yet";
+}
+
+/* ================= BLOCKING ================= */
+function doBlock(ip, reason, sensor, alertObj){
+  if(S.blocked.some(b=>b.ip===ip)) return;
+  S.blocked.unshift({ip, reason, sensor, time:now()});
+  S.sessionBlocked++;
+  renderBlocked(); renderKPIs();
+  toast(`Blocked <b>${ip}</b> on ${sensor}`, false);
+}
+function renderBlocked(){
+  const t=document.getElementById("blockRows");
+  document.getElementById("blockCount").textContent=`${S.blocked.length} blocked`;
+  if(!S.blocked.length){ t.innerHTML=`<tr><td colspan="5" class="empty">Nothing blocked yet. Switch to IPS mode to auto-block high-severity threats, or block manually from the feed.</td></tr>`; return; }
+  t.innerHTML=S.blocked.map((b,i)=>`
+    <tr><td class="mono"><span class="dot off" style="background:var(--crit)"></span>${b.ip}</td>
+    <td style="color:var(--muted);font-size:12.5px">${b.reason}</td>
+    <td class="mono" style="font-size:12px">${hhmmss(b.time)}</td>
+    <td style="color:var(--muted-2)">${b.sensor}</td>
+    <td><button class="rb block" data-unblock="${i}">Unblock</button></td></tr>`).join("");
+  t.querySelectorAll("[data-unblock]").forEach(btn=>btn.addEventListener("click",()=>{
+    const b=S.blocked[btn.dataset.unblock]; S.blocked.splice(btn.dataset.unblock,1);
+    renderBlocked(); renderKPIs(); toast(`Unblocked ${b.ip}`, true);
+  }));
+}
+
+/* ================= AI ALERT ANALYSIS ================= */
+async function analyzeAlert(id){
+  const a=S.alerts.find(x=>x.id==id); if(!a) return;
+  const row=document.querySelector(`.alert-row[data-id="${id}"]`);
+  if(row.querySelector(".ai-panel")){ row.querySelector(".ai-panel").remove(); return; }
+  const panel=document.createElement("div"); panel.className="ai-panel";
+  panel.innerHTML=`<h4>◆ AI analyst</h4><div class="thinking"><span class="d"></span><span class="d"></span><span class="d"></span></div>`;
+  row.appendChild(panel);
+  const sys="You are a SOC analyst assistant inside an IDS/IPS console. Given one alert, explain it "+
+    "briefly for a non-expert operator: what the signature means, how serious it is and why, and 2-4 "+
+    "concrete recommended actions. Use short markdown. Under 150 words. Be calm and practical.";
+  const usr=`Alert:\n- Signature: ${a.sig}\n- Category: ${a.cat}\n- Severity: ${SEVNAME[a.sev]}\n- Source IP: ${a.src}\n- Destination: ${a.dst}:${a.port}\n- Sensor: ${a.sensor}`;
+  try{
+    const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,system:sys,messages:[{role:"user",content:usr}]})});
+    if(!res.ok) throw new Error();
+    const data=await res.json();
+    const txt=data.content.filter(b=>b.type==="text").map(b=>b.text).join("\n");
+    panel.innerHTML=`<h4>◆ AI analyst · ${a.sig}</h4>${mdToHtml(txt)}`;
+  }catch(e){
+    panel.innerHTML=`<h4>◆ AI analyst</h4><p class="note err" style="margin:0">AI analysis runs inside Claude's environment (no key needed there). The rest of the console works everywhere, including when you share the file.</p>`;
+  }
+}
+function mdToHtml(md){
+  const esc=s=>s.replace(/&/g,"&amp;").replace(/</g,"&lt;");
+  const inl=s=>esc(s).replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>");
+  let out="",ul=false;
+  md.split("\n").forEach(raw=>{
+    const l=raw.trim(); if(!l){if(ul){out+="</ul>";ul=false;}return;}
+    if(/^[-*]\s/.test(l)||/^\d+\.\s/.test(l)){if(!ul){out+="<ul>";ul=true;}
+      out+=`<li>${inl(l.replace(/^[-*]\s/,"").replace(/^\d+\.\s/,""))}</li>`;}
+    else{if(ul){out+="</ul>";ul=false;}out+=`<p>${inl(l)}</p>`;}
+  });
+  if(ul)out+="</ul>"; return out;
+}
+
+/* ================= UI WIRING ================= */
+document.querySelectorAll(".navbtn").forEach(b=>b.addEventListener("click",()=>{
+  document.querySelectorAll(".navbtn").forEach(x=>x.classList.remove("active"));
+  document.querySelectorAll(".view").forEach(x=>x.classList.remove("active"));
+  b.classList.add("active"); document.getElementById(b.dataset.view).classList.add("active");
+  const titles={live:["Live Monitor","Real-time intrusion detection across your network"],
+    sensors:["Sensors","Machines running Suricata + the Bastion agent"],
+    rules:["Detection Rules","Enable or disable rule categories on your sensors"],
+    blocked:["Blocked IPs","Source addresses currently dropped at the network edge"]};
+  document.getElementById("viewTitle").textContent=titles[b.dataset.view][0];
+  document.getElementById("viewSub").textContent=titles[b.dataset.view][1];
+  document.getElementById("sidebar").classList.remove("open");
+}));
+document.getElementById("menuBtn").addEventListener("click",()=>document.getElementById("sidebar").classList.toggle("open"));
+
+const mIDS=document.getElementById("modeIDS"), mIPS=document.getElementById("modeIPS");
+mIDS.addEventListener("click",()=>setMode("IDS"));
+mIPS.addEventListener("click",()=>setMode("IPS"));
+function setMode(m){
+  S.mode=m;
+  mIDS.className=m==="IDS"?"on":""; mIPS.className=m==="IPS"?"on ips":"";
+  document.getElementById("statusTxt").textContent = m==="IPS"?"Blocking":"Protecting";
+  renderKPIs();
+  toast(m==="IPS"?"Switched to <b>IPS mode</b> — high-severity threats will be auto-blocked"
+                 :"Switched to <b>IDS mode</b> — detection only, no blocking", m==="IDS");
+}
+document.getElementById("pauseBtn").addEventListener("click",e=>{
+  S.paused=!S.paused; e.target.textContent=S.paused?"▶ Resume":"⏸ Pause"; e.target.classList.toggle("on",!S.paused);
+});
+document.getElementById("clearBtn").addEventListener("click",()=>{S.alerts=[];renderFeed();});
+document.getElementById("addSensor").addEventListener("click",()=>{
+  const n="sensor-0"+(SENSORS.length+1);
+  SENSORS.push({name:n,loc:"New deployment",mode:"IDS",tput:"—",alerts:0,status:"warn"});
+  renderSensors(); document.getElementById("nbSensors").textContent=SENSORS.length;
+  document.getElementById("kSensors").innerHTML=`${SENSORS.length}<span style="font-size:16px;color:var(--muted-2)">/${SENSORS.length}</span>`;
+  toast(`Sensor <b>${n}</b> registered — run the agent installer to bring it online`, true);
+});
+
+function toast(html, ok){
+  const t=document.createElement("div"); t.className="toast"+(ok?" ok":"");
+  t.innerHTML=html; document.getElementById("toasts").appendChild(t);
+  setTimeout(()=>{t.style.opacity="0";t.style.transition=".4s";setTimeout(()=>t.remove(),400);},4200);
+}
+
+/* ================= BOOT ================= */
+renderSensors(); renderRules(); renderBlocked(); renderSpark(); renderStats(); renderKPIs();
+// seed a few alerts so it's alive on open
+for(let i=0;i<6;i++){ const a=makeAlert(); a.time=new Date(Date.now()-r(2,90)*1000); pushAlert(a); }
+setInterval(tick, 2500);
+</script>
+</body>
+</html>
